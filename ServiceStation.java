@@ -50,7 +50,7 @@ class Pump extends Thread {
     private Semaphore empty;
     private Semaphore full;
     private Semaphore mutex;
-    private Semaphore pumps; // represents available service bays
+    private Semaphore pumps;
 
     public Pump(int pumpId, Queue<String> queue, Semaphore empty, Semaphore full, Semaphore mutex, Semaphore pumps) {
         this.pumpId = pumpId;
@@ -63,11 +63,36 @@ class Pump extends Thread {
 
     @Override
     public void run() {
-        // TODO: implement pump logic (acquire, serve, release)
+        try {
+            while (true) {
+                full.waitSem();        
+                pumps.waitSem();       
+                mutex.waitSem();       
+
+                if (!queue.isEmpty()) {
+                    String carId = queue.remove();
+                    System.out.println("Pump " + pumpId + ": " + carId + " login");
+                    System.out.println("Pump " + pumpId + ": " + carId + " begins service at Bay " + pumpId);
+                }
+
+                mutex.signalSem();
+                empty.signalSem();
+
+                Thread.sleep(2000); 
+
+                System.out.println("Pump " + pumpId + ": finishes service");
+                System.out.println("Pump " + pumpId + ": Bay " + pumpId + " is now free");
+
+                pumps.signalSem(); 
+            }
+        } catch (InterruptedException e) {
+            System.out.println("Pump " + pumpId + " interrupted");
+        }
     }
 }
 
-// ====================== SERVICE STATION (MAIN CLASS) ======================
+
+
 public class ServiceStation {
     private Queue<String> queue;
     private Semaphore empty;
@@ -88,7 +113,7 @@ public class ServiceStation {
         // TODO: start pump threads and create car threads dynamically
     }
 
-    // ====================== MAIN METHOD ======================
+ 
     public static void main(String[] args) {
         java.util.Scanner input = new java.util.Scanner(System.in);
 
@@ -117,6 +142,11 @@ public class ServiceStation {
         } catch (Exception e) {
             System.out.println("️ An unexpected error occurred: " + e.getMessage());
         } finally {
+            input.close();
+            System.out.println("Simulation ended.");
+        }
+    }
+}
             input.close();
             System.out.println("Simulation ended.");
         }
