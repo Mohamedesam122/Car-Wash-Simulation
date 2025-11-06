@@ -3,26 +3,28 @@ package com.mycompany.servicestation;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.InputMismatchException;
-
+import java.util.Scanner;
 
 class Semaphore {
     private int value = 0;
+
     public Semaphore(int value) {
         this.value = value;
     }
+
     public synchronized void waitSem() throws InterruptedException {
         value--;
-        if (value < 0){
+        if (value < 0) {
             try {
                 wait();
-            } catch (InterruptedException e){
-
+            } catch (InterruptedException e) {
             }
         }
     }
+
     public synchronized void signalSem() {
         value++;
-        if (value <= 0){
+        if (value <= 0) {
             notify();
         }
     }
@@ -30,11 +32,11 @@ class Semaphore {
 
 // ====================== CAR (PRODUCER) ======================
 class Car extends Thread {
-    private String carId;            
-    private Queue<String> queue;         
-    private Semaphore empty;         
-    private Semaphore full;             
-    private Semaphore mutex;          
+    private String carId;
+    private Queue<String> queue;
+    private Semaphore empty;
+    private Semaphore full;
+    private Semaphore mutex;
 
     public Car(String carId, Queue<String> queue, Semaphore empty, Semaphore full, Semaphore mutex) {
         this.carId = carId;
@@ -47,16 +49,19 @@ class Car extends Thread {
     @Override
     public void run() {
         try {
-            System.out.println(carId + " arrived");
+            empty.waitSem();
+            mutex.waitSem();
+            queue.add(carId);
 
-            empty.waitSem();         
-            mutex.waitSem();     
+            if (queue.size() <=1) {
 
-            queue.add(carId);        
-            System.out.println(carId + " entered the queue (waiting cars: " + queue.size() + ")");
+            } else
+            {
+                System.out.println("• " + carId + " arrived and waiting");
+            }
 
-            mutex.signalSem();       
-            full.signalSem();        
+            mutex.signalSem();
+            full.signalSem();
 
         } catch (InterruptedException e) {
             System.out.println(carId + " was interrupted.");
@@ -86,33 +91,38 @@ class Pump extends Thread {
     public void run() {
         try {
             while (true) {
-                full.waitSem();        
-                pumps.waitSem();       
-                mutex.waitSem();       
+                full.waitSem();
+                pumps.waitSem();
+                mutex.waitSem();
+
+                String carId = null;
 
                 if (!queue.isEmpty()) {
-                    String carId = queue.remove();
-                    System.out.println("Pump " + pumpId + ": " + carId + " login");
-                    System.out.println("Pump " + pumpId + ": " + carId + " begins service at Bay " + pumpId);
+                    carId = queue.remove();
+                    System.out.println("• Pump " + pumpId + ": " + carId + " login");
+                    System.out.println("• Pump " + pumpId + ": " + carId + " begins service at Bay " + pumpId);
                 }
 
                 mutex.signalSem();
                 empty.signalSem();
 
-                Thread.sleep(2000); 
+                Thread.sleep(2000);   
 
-                System.out.println("Pump " + pumpId + ": finishes service");
-                System.out.println("Pump " + pumpId + ": Bay " + pumpId + " is now free");
+                if (carId != null) {
+                    System.out.println("• Pump " + pumpId + ": " + carId + " finishes service");
+                }
+                System.out.println("• Pump " + pumpId + ": Bay " + pumpId + " is now free");
 
-                pumps.signalSem(); 
+                pumps.signalSem();
             }
         } catch (InterruptedException e) {
             System.out.println("Pump " + pumpId + " interrupted");
         }
     }
+
 }
 
-
+// ====================== SERVICE STATION ======================
 
 public class ServiceStation {
     private Queue<String> queue;
@@ -122,49 +132,107 @@ public class ServiceStation {
     private Semaphore pumps;
     private int waitingCapacity;
     private int numberOfPumps;
+    private String[] arrivingCars;
 
-    public ServiceStation(int waitingCapacity, int numberOfPumps) {
+    public ServiceStation(int waitingCapacity, int numberOfPumps, String[] arrivingCars) {
         this.waitingCapacity = waitingCapacity;
         this.numberOfPumps = numberOfPumps;
+        this.arrivingCars = arrivingCars;
 
-        // TODO: initialize queue and semaphores
+        this.queue = new LinkedList<>();
+        this.empty = new Semaphore(waitingCapacity);
+        this.full = new Semaphore(0);
+        this.mutex = new Semaphore(1);
+        this.pumps = new Semaphore(numberOfPumps);
     }
 
     public void startSimulation() {
-        // TODO: start pump threads and create car threads dynamically
+        for (int i = 1; i <= numberOfPumps; i++) {
+            Pump p = new Pump(i, queue, empty, full, mutex, pumps);
+            p.start();
+        }
+
+        for (String car : arrivingCars) {
+            System.out.println("• " + car + " arrived");
+        }
+
+        int min = Math.min(numberOfPumps, arrivingCars.length);
+        for (int i = 0; i < min; i++) {
+            System.out.println("• Pump " + (i + 1) + ": " + arrivingCars[i] + " Occupied");
+        }
+
+        for (int i = numberOfPumps; i < arrivingCars.length; i++) {
+            System.out.println("• " + arrivingCars[i] + " arrived and waiting");
+        }
+
+        for (String car : arrivingCars) {
+            Car c = new Car(car, queue, empty, full, mutex);
+            c.start();
+            try {
+                Thread.sleep(600);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+        // Let simulation run
+        try {
+            Thread.sleep(15000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("• All cars processed; simulation ends");
+        System.exit(0);
     }
 
- 
+    // ======================= MAIN =======================
     public static void main(String[] args) {
-        java.util.Scanner input = new java.util.Scanner(System.in);
+        Scanner input = new Scanner(System.in);
 
-        try {
-            System.out.println("=== Car Wash Simulation ===");
+        while (true) {
+            try {
+                System.out.println("\n=== Car Wash / Service Station Simulation ===");
 
-            System.out.print("Enter waiting area capacity (1–10): ");
-            int waiting = input.nextInt();
-            if (waiting < 1 || waiting > 10) {
-                System.out.println("Invalid waiting area capacity. Must be between 1 and 10.");
-                return;
+                System.out.print("• Waiting area capacity (1–10): ");
+                int waiting = input.nextInt();
+                if (waiting < 1 || waiting > 10) {
+                    System.out.println("Invalid input. Must be between 1 and 10.");
+                    continue;
+                }
+
+                System.out.print("• Number of service bays (pumps) (1–10): ");
+                int pumps = input.nextInt();
+                if (pumps < 1 || pumps > 10) {
+                    System.out.println(" Invalid input. Must be between 1 and 10.");
+                    continue;
+                }
+
+                input.nextLine();
+                System.out.print("• Cars arriving (order): ");
+                String carsLine = input.nextLine().trim();
+
+                if (carsLine.isEmpty()) {
+                    System.out.println("Please enter car names like C1, C2, C3 ...");
+                    continue;
+                }
+
+                String[] cars = carsLine.replace(",", " ").trim().split("\\s+");
+
+                ServiceStation station = new ServiceStation(waiting, pumps, cars);
+                System.out.println();
+                station.startSimulation();
+                break;
+
+            } catch (InputMismatchException e) {
+                System.out.println(" Input error: please enter numeric values only.");
+                input.nextLine(); // clear buffer
+            } catch (Exception e) {
+                System.out.println(" Unexpected error: " + e.getMessage());
             }
-
-            System.out.print("Enter number of pumps (1–10): ");
-            int pumps = input.nextInt();
-            if (pumps < 1 || pumps > 10) {
-                System.out.println(" Invalid number of pumps. Must be between 1 and 10.");
-                return;
-            }
-
-            ServiceStation station = new ServiceStation(waiting, pumps);
-            station.startSimulation();
-
-        } catch (InputMismatchException e) {
-            System.out.println(" Input error: please enter numeric values only.");
-        } catch (Exception e) {
-            System.out.println("️ An unexpected error occurred: " + e.getMessage());
-        } finally {
-            input.close();
-            System.out.println("Simulation ended.");
         }
+
+        input.close();
     }
 }
+
