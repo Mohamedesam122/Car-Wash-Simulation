@@ -23,11 +23,11 @@ class Semaphore {
 
 // ====================== CAR (PRODUCER) ======================
 class Car extends Thread {
-    private String carId;
-    private Queue<String> queue;
-    private Semaphore empty;
-    private Semaphore full;
-    private Semaphore mutex;
+    private String carId;            
+    private Queue<String> queue;         
+    private Semaphore empty;         
+    private Semaphore full;             
+    private Semaphore mutex;          
 
     public Car(String carId, Queue<String> queue, Semaphore empty, Semaphore full, Semaphore mutex) {
         this.carId = carId;
@@ -39,7 +39,21 @@ class Car extends Thread {
 
     @Override
     public void run() {
-        // TODO: implement car arrival and queueing logic
+        try {
+            System.out.println(carId + " arrived");
+
+            empty.waitSem();         
+            mutex.waitSem();     
+
+            queue.add(carId);        
+            System.out.println(carId + " entered the queue (waiting cars: " + queue.size() + ")");
+
+            mutex.signalSem();       
+            full.signalSem();        
+
+        } catch (InterruptedException e) {
+            System.out.println(carId + " was interrupted.");
+        }
     }
 }
 
@@ -142,11 +156,6 @@ public class ServiceStation {
         } catch (Exception e) {
             System.out.println("️ An unexpected error occurred: " + e.getMessage());
         } finally {
-            input.close();
-            System.out.println("Simulation ended.");
-        }
-    }
-}
             input.close();
             System.out.println("Simulation ended.");
         }
