@@ -6,18 +6,25 @@ import java.util.InputMismatchException;
 
 
 class Semaphore {
-    private int value;
-
+    private int value = 0;
     public Semaphore(int value) {
         this.value = value;
     }
-
     public synchronized void waitSem() throws InterruptedException {
-        // TODO: implement wait (P) operation
-    }
+        value--;
+        if (value < 0){
+            try {
+                wait();
+            } catch (InterruptedException e){
 
+            }
+        }
+    }
     public synchronized void signalSem() {
-        // TODO: implement signal (V) operation
+        value++;
+        if (value <= 0){
+            notify();
+        }
     }
 }
 
