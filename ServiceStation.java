@@ -2,8 +2,14 @@ package com.mycompany.servicestation;
 
 import java.util.LinkedList;
 import java.util.Queue;
-import java.util.InputMismatchException;
-import java.util.Scanner;
+import java.util.ArrayList;
+import java.util.List;
+import javax.swing.*;
+import javax.swing.border.*;
+import java.awt.*;
+import java.io.OutputStream;
+import java.io.PrintStream;
+
 
 class Semaphore {
     private int value = 0;
@@ -15,10 +21,7 @@ class Semaphore {
     public synchronized void waitSem() throws InterruptedException {
         value--;
         if (value < 0) {
-            try {
-                wait();
-            } catch (InterruptedException e) {
-            }
+            wait();
         }
     }
 
@@ -30,7 +33,7 @@ class Semaphore {
     }
 }
 
-// ====================== CAR (PRODUCER) ======================
+
 class Car extends Thread {
     private String carId;
     private Queue<String> queue;
@@ -53,12 +56,14 @@ class Car extends Thread {
             mutex.waitSem();
             queue.add(carId);
 
-            if (queue.size() <=1) {
-
-            } else
-            {
-                System.out.println("• " + carId + " arrived and waiting");
+           
+            if (ServiceStation.gui != null) {
+                List<String> snapshot = new ArrayList<>(queue);
+                ServiceStation.gui.updateQueue(snapshot);
             }
+
+            if (queue.size() > 1)
+                System.out.println(" " + carId + " arrived and waiting");
 
             mutex.signalSem();
             full.signalSem();
@@ -69,7 +74,7 @@ class Car extends Thread {
     }
 }
 
-// ====================== PUMP (CONSUMER) ======================
+
 class Pump extends Thread {
     private int pumpId;
     private Queue<String> queue;
@@ -99,19 +104,28 @@ class Pump extends Thread {
 
                 if (!queue.isEmpty()) {
                     carId = queue.remove();
-                    System.out.println("• Pump " + pumpId + ": " + carId + " login");
-                    System.out.println("• Pump " + pumpId + ": " + carId + " begins service at Bay " + pumpId);
+                    System.out.println(" Pump " + pumpId + ": " + carId + " login");
+                    System.out.println(" Pump " + pumpId + ": " + carId + " begins service at Bay " + pumpId);
+
+                    if (ServiceStation.gui != null) {
+                        ServiceStation.gui.updatePump(pumpId - 1, "Busy - " + carId, true);
+                        List<String> snapshot = new ArrayList<>(queue);
+                        ServiceStation.gui.updateQueue(snapshot);
+                    }
                 }
 
                 mutex.signalSem();
                 empty.signalSem();
 
-                Thread.sleep(2000);   
+                Thread.sleep(2000);
 
-                if (carId != null) {
-                    System.out.println("• Pump " + pumpId + ": " + carId + " finishes service");
+                if (carId != null)
+                    System.out.println(" Pump " + pumpId + ": " + carId + " finishes service");
+                System.out.println(" Pump " + pumpId + ": Bay " + pumpId + " is now free");
+
+                if (ServiceStation.gui != null) {
+                    ServiceStation.gui.updatePump(pumpId - 1, "Free", false);
                 }
-                System.out.println("• Pump " + pumpId + ": Bay " + pumpId + " is now free");
 
                 pumps.signalSem();
             }
@@ -119,12 +133,9 @@ class Pump extends Thread {
             System.out.println("Pump " + pumpId + " interrupted");
         }
     }
-
 }
 
-// ====================== SERVICE STATION ======================
-
-public class ServiceStation {
+ class ServiceStation {
     private Queue<String> queue;
     private Semaphore empty;
     private Semaphore full;
@@ -133,6 +144,8 @@ public class ServiceStation {
     private int waitingCapacity;
     private int numberOfPumps;
     private String[] arrivingCars;
+
+    public static CarWashGUI gui = null;
 
     public ServiceStation(int waitingCapacity, int numberOfPumps, String[] arrivingCars) {
         this.waitingCapacity = waitingCapacity;
@@ -152,17 +165,25 @@ public class ServiceStation {
             p.start();
         }
 
-        for (String car : arrivingCars) {
-            System.out.println("• " + car + " arrived");
-        }
+        for (String car : arrivingCars)
+            System.out.println(" " + car + " arrived");
 
         int min = Math.min(numberOfPumps, arrivingCars.length);
-        for (int i = 0; i < min; i++) {
-            System.out.println("• Pump " + (i + 1) + ": " + arrivingCars[i] + " Occupied");
-        }
+        for (int i = 0; i < min; i++)
+            System.out.println(" Pump " + (i + 1) + ": " + arrivingCars[i] + " Occupied");
 
-        for (int i = numberOfPumps; i < arrivingCars.length; i++) {
-            System.out.println("• " + arrivingCars[i] + " arrived and waiting");
+        for (int i = numberOfPumps; i < arrivingCars.length; i++)
+            System.out.println(" " + arrivingCars[i] + " arrived and waiting");
+
+        if (gui != null) {
+            gui.buildDynamicPanels(waitingCapacity, numberOfPumps);
+            for (int i = 0; i < numberOfPumps && i < arrivingCars.length; i++)
+                gui.updatePump(i, "Occupied - " + arrivingCars[i], true);
+
+            List<String> initialQueue = new ArrayList<>();
+            for (int i = numberOfPumps; i < arrivingCars.length; i++)
+                initialQueue.add(arrivingCars[i]);
+            gui.updateQueue(initialQueue);
         }
 
         for (String car : arrivingCars) {
@@ -175,64 +196,215 @@ public class ServiceStation {
             }
         }
 
-        // Let simulation run
         try {
-            Thread.sleep(15000);
+            Thread.sleep(arrivingCars.length * 1000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
 
-        System.out.println("• All cars processed; simulation ends");
-        System.exit(0);
+        System.out.println(" All cars processed; simulation ends");
+        if (gui == null)
+            System.exit(0);
+        else
+            SwingUtilities.invokeLater(() -> gui.enableStartAgain());
     }
 
-    // ======================= MAIN =======================
     public static void main(String[] args) {
-        Scanner input = new Scanner(System.in);
+        SwingUtilities.invokeLater(() -> new CarWashGUI().setVisible(true));
+    }
 
-        while (true) {
-            try {
-                System.out.println("\n=== Car Wash / Service Station Simulation ===");
+    public static void mainWithGUI(int waitingCapacity, int pumpsCount, String[] cars, CarWashGUI cg) {
+        gui = cg;
+        ServiceStation station = new ServiceStation(waitingCapacity, pumpsCount, cars);
+        station.startSimulation();
+    }
+}
 
-                System.out.print("• Waiting area capacity (1–10): ");
-                int waiting = input.nextInt();
-                if (waiting < 1 || waiting > 10) {
-                    System.out.println("Invalid input. Must be between 1 and 10.");
-                    continue;
-                }
+class CarWashGUI extends JFrame {
+    private JTextField capacityField, pumpsField, carsField;
+    private JButton startButton, resetButton;
+    private JTextArea logArea;
+    private JPanel pumpsPanel, queuePanel, centerPanel;
+    private List<JLabel> pumpLabels = new ArrayList<>();
+    private List<JLabel> queueLabels = new ArrayList<>();
+    private static CarWashGUI instance = null;
 
-                System.out.print("• Number of service bays (pumps) (1–10): ");
-                int pumps = input.nextInt();
-                if (pumps < 1 || pumps > 10) {
-                    System.out.println(" Invalid input. Must be between 1 and 10.");
-                    continue;
-                }
+    public CarWashGUI() {
+        instance = this;
+        setTitle("🚗 Car Wash Simulation");
+        setSize(950, 900);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+        getContentPane().setBackground(new Color(230, 240, 255));
+        setLayout(new BorderLayout(10, 10));
 
-                input.nextLine();
-                System.out.print("• Cars arriving (order): ");
-                String carsLine = input.nextLine().trim();
 
-                if (carsLine.isEmpty()) {
-                    System.out.println("Please enter car names like C1, C2, C3 ...");
-                    continue;
-                }
+        JPanel inputPanel = new JPanel(new GridLayout(2, 5, 10, 10));
+        inputPanel.setBackground(new Color(200, 220, 255));
+        inputPanel.setBorder(new TitledBorder("Simulation Setup"));
+        inputPanel.add(new JLabel("Waiting Area Capacity:", SwingConstants.RIGHT));
+        capacityField = new JTextField("5");
+        inputPanel.add(capacityField);
+        inputPanel.add(new JLabel("Number of Pumps:", SwingConstants.RIGHT));
+        pumpsField = new JTextField("3");
+        inputPanel.add(pumpsField);
+        inputPanel.add(new JLabel("Cars (e.g., C1 C2 C3 C4 C5):", SwingConstants.RIGHT));
+        carsField = new JTextField("C1 C2 C3 C4 C5");
+        inputPanel.add(carsField);
 
-                String[] cars = carsLine.replace(",", " ").trim().split("\\s+");
+        startButton = new JButton("▶ Start Simulation");
+        startButton.setBackground(new Color(100, 200, 100));
+        startButton.setFont(new Font("Arial", Font.BOLD, 14));
+        inputPanel.add(startButton);
 
-                ServiceStation station = new ServiceStation(waiting, pumps, cars);
-                System.out.println();
-                station.startSimulation();
-                break;
+        resetButton = new JButton("🔄 Reset");
+        resetButton.setBackground(new Color(255, 150, 150));
+        resetButton.setFont(new Font("Arial", Font.BOLD, 14));
+        inputPanel.add(resetButton);
+        add(inputPanel, BorderLayout.NORTH);
 
-            } catch (InputMismatchException e) {
-                System.out.println(" Input error: please enter numeric values only.");
-                input.nextLine(); // clear buffer
-            } catch (Exception e) {
-                System.out.println(" Unexpected error: " + e.getMessage());
+        
+        centerPanel = new JPanel(new GridLayout(1, 2, 10, 10));
+        centerPanel.setBackground(new Color(230, 240, 255));
+        centerPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
+        add(centerPanel, BorderLayout.CENTER);
+
+        buildDynamicPanels(5, 3); 
+
+        
+        logArea = new JTextArea();
+        logArea.setEditable(false);
+        logArea.setFont(new Font("Consolas", Font.PLAIN, 13));
+        JScrollPane scrollPane = new JScrollPane(logArea);
+        scrollPane.setBorder(new TitledBorder("📜 Simulation Log"));
+        add(scrollPane, BorderLayout.SOUTH);
+
+        
+        PrintStream originalOut = System.out;
+        PrintStream ps = new PrintStream(new OutputStream() {
+            @Override
+            public void write(int b) {
+                SwingUtilities.invokeLater(() -> {
+                    logArea.append(String.valueOf((char) b));
+                    logArea.setCaretPosition(logArea.getDocument().getLength());
+                });
+                originalOut.print((char) b);
             }
+        }, true);
+        System.setOut(ps);
+        System.setErr(ps);
+
+        
+        startButton.addActionListener(e -> startSimulation());
+        resetButton.addActionListener(e -> resetSimulation());
+    }
+
+   
+    public void buildDynamicPanels(int queueCount, int pumpCount) {
+        if (centerPanel != null) centerPanel.removeAll();
+        pumpLabels.clear();
+        queueLabels.clear();
+
+       
+        queuePanel = new JPanel(new GridLayout(Math.max(queueCount, 3), 1, 5, 5));
+        queuePanel.setBorder(new TitledBorder("🚙 Waiting Area (Queue)"));
+        for (int i = 0; i < Math.max(queueCount, 3); i++) {
+            JLabel label = new JLabel("Empty", SwingConstants.CENTER);
+            label.setOpaque(true);
+            label.setBackground(new Color(255, 255, 180));
+            label.setBorder(new LineBorder(Color.DARK_GRAY, 1));
+            label.setFont(new Font("Arial", Font.BOLD, 13));
+            label.setPreferredSize(new Dimension(400, 40));
+            queuePanel.add(label);
+            queueLabels.add(label);
         }
 
-        input.close();
+        
+        pumpsPanel = new JPanel(new GridLayout(Math.max(pumpCount, 3), 1, 5, 5));
+        pumpsPanel.setBorder(new TitledBorder("⛽ Pumps (Service Bays)"));
+        for (int i = 0; i < Math.max(pumpCount, 3); i++) {
+            JLabel label = new JLabel("Pump " + (i + 1) + " - Free", SwingConstants.CENTER);
+            label.setOpaque(true);
+            label.setBackground(new Color(180, 255, 180));
+            label.setBorder(new LineBorder(Color.GRAY, 1));
+            label.setFont(new Font("Arial", Font.BOLD, 13));
+            label.setPreferredSize(new Dimension(400, 40));
+            pumpsPanel.add(label);
+            pumpLabels.add(label);
+        }
+
+        centerPanel.add(queuePanel);
+        centerPanel.add(pumpsPanel);
+        centerPanel.revalidate();
+        centerPanel.repaint();
+    }
+
+    private void startSimulation() {
+        try {
+            int capacity = Integer.parseInt(capacityField.getText().trim());
+            int pumpsCount = Integer.parseInt(pumpsField.getText().trim());
+            String[] cars = carsField.getText().trim().replace(",", " ").split("\\s+");
+            logArea.append("Starting simulation with " + capacity + " capacity, " + pumpsCount + " pumps, and " + cars.length + " cars...\n");
+
+            new Thread(() -> {
+                try {
+                    ServiceStation.mainWithGUI(capacity, pumpsCount, cars, this);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }).start();
+            startButton.setEnabled(false);
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "Invalid input! Please enter correct values.", "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void resetSimulation() {
+        logArea.setText("");
+        buildDynamicPanels(5, 3);
+        startButton.setEnabled(true);
+        logArea.append("Simulation reset. Ready for new input!\n");
+    }
+
+    public void enableStartAgain() {
+        SwingUtilities.invokeLater(() -> startButton.setEnabled(true));
+    }
+
+    public void updatePump(int index, String text, boolean busy) {
+        if (index < pumpLabels.size()) {
+            JLabel label = pumpLabels.get(index);
+            SwingUtilities.invokeLater(() -> {
+                label.setText("Pump " + (index + 1) + " - " + text);
+                label.setBackground(busy ? new Color(255, 120, 120) : new Color(180, 255, 180));
+            });
+        }
+    }
+
+    public void updateQueue(List<String> queue) {
+        SwingUtilities.invokeLater(() -> {
+            for (int i = 0; i < queueLabels.size(); i++) {
+                JLabel label = queueLabels.get(i);
+                if (i < queue.size()) {
+                    label.setText(queue.get(i));
+                    label.setBackground(new Color(255, 200, 120));
+                } else {
+                    label.setText("Empty");
+                    label.setBackground(new Color(255, 255, 180));
+                }
+            }
+        });
+    }
+
+    public static CarWashGUI getInstance() {
+        return instance;
+    }
+
+    public static boolean exists() {
+        return instance != null;
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new CarWashGUI().setVisible(true));
     }
 }
 
